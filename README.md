@@ -7,3 +7,5 @@ For example, if `file1` contains _"The dog"_ and `file2` contains _"The Cat"_, t
 * `The -> {file1, file2}` 
 * `Dog -> {file1}`  
 * `Cat -> {file2}`  
+
+This project is essentiallly a Go port of Tom Van Cutsem's [erlang-mapreduce project](https://github.com/tvcutsem/erlang-mapreduce).

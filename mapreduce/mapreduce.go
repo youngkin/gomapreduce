@@ -16,8 +16,8 @@ type MRInput struct {
 // input to the map reduce process.
 //
 // mapFunc and ReduceFunc are expected to return their results on their respective collectChan
-// channel parameters. They are also expected to return a final MRInput instance initialized with
-// its "zero" values to signal they're done (e.g., MRInput{}).
+// channel parameters. They are also expected to signal when they have completed processing by sending a
+// message on doneChl.
 //
 // MapReduce is a simple function that runs in the same goroutine as the caller. The rest of the map-reduce
 // process runs in separate goroutines.
@@ -36,7 +36,7 @@ func MapReduce(input []MRInput, mapFunc func(input MRInput, collectChan chan MRI
 
 // master implements the high level map-reduce algorithm. This mainly consists of (1) starting a goroutine for each
 // of the entries in the inputs parameter to do the mapping; (2) Collecting the results of the mapping process from
-// each of the mapper goroutines; (3) starting a goroutine for each of the entries in mapping results to perform
+// each of the mapper goroutines; (3) starting a goroutine for each of the entries in the mapping results to perform
 // the reduce operation; (4) collecting the final results and sending them over the resultChl.
 func master(resultChl chan map[string][]string, mapFunc func(input MRInput, resChan chan MRInput, doneChl chan bool),
 	reduceFunc func(input MRInput, resChan chan MRInput, doneChl chan bool), inputs []MRInput) {
@@ -49,10 +49,9 @@ func master(resultChl chan map[string][]string, mapFunc func(input MRInput, resC
 	// Spawn a mapper goroutine for each input, with a mapping function and a
 	// channel to collect the intermediate results.
 	for _, input := range inputs {
-		startWorkers(mapFunc, input, collectChl, doneChl)
+		go mapFunc(input, collectChl, doneChl)
 	}
 
-	// Gather all the mapping results
 	numResults := len(inputs)
 	intermediateResultMap := collectResults(collectChl, numResults, doneChl)
 
@@ -61,10 +60,9 @@ func master(resultChl chan map[string][]string, mapFunc func(input MRInput, resC
 	// a slice of MRInputs suitable for input for the reduce function.
 	intermediateResults := mapToKVSlice(intermediateResultMap)
 	for _, intermediateResult := range intermediateResults {
-		startWorkers(reduceFunc, intermediateResult, collectChl, doneChl)
+		go reduceFunc(intermediateResult, collectChl, doneChl)
 	}
 
-	// Collect the results from the reduce operation
 	numResults = len(intermediateResults)
 	finalResults := collectResults(collectChl, numResults, doneChl)
 
@@ -72,18 +70,13 @@ func master(resultChl chan map[string][]string, mapFunc func(input MRInput, resC
 
 }
 
-func startWorkers(workerFun func(input MRInput, retChan chan MRInput, doneChl chan bool), input MRInput,
-	collectChl chan MRInput, doneChl chan bool) {
-	go workerFun(input, collectChl, doneChl)
-}
 
 func collectResults(collectChl chan MRInput, numProcs int, doneChl chan bool) map[string][]string {
 	results := make(map[string][]string)
 
-	// Each map/reduce process will provide a zero-value initialized MRInput in the final result just prior to exiting.
-	// This function reduces numProcs by 1 for zero-value MRInput result until numProcs is 0. I.e., it runs until all
-	// mappers/reducers have exited.
-
+	// Each map/reduce process will send a message on doneChl just prior to exiting. This function reduces
+	// numProcs by 1 when signaled on the doneChl until numProcs is 0. I.e., it runs until all mappers/reducers
+	// have exited.
 	for i := 0; numProcs > 0; i++ {
 		select  {
 		case result := <-collectChl:

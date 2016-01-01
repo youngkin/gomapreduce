@@ -13,8 +13,10 @@ func TestGetFiles(t *testing.T) {
 	}
 	for _, fileName := range files {
 		if !strings.Contains(fileName, "cat") &&
-		!strings.Contains(fileName, "dog") &&
-		!strings.Contains(fileName, "car") {
+			!strings.Contains(fileName, "dog") &&
+			!strings.Contains(fileName, "car") &&
+			!strings.Contains(fileName, "nowisthetime") &&
+			!strings.Contains(fileName, "thequickbrownfox") {
 			t.Errorf("Unexpected file named <%s>", fileName)
 		}
 	}
@@ -27,8 +29,10 @@ func TestGetKVFiles(t *testing.T) {
 	}
 	for _, kvFile := range files {
 		if !strings.Contains(kvFile.Values[0], "cat") &&
-		!strings.Contains(kvFile.Values[0], "dog") &&
-		!strings.Contains(kvFile.Values[0], "car") {
+			!strings.Contains(kvFile.Values[0], "dog") &&
+			!strings.Contains(kvFile.Values[0], "car") &&
+			!strings.Contains(kvFile.Values[0], "nowisthetime") &&
+			!strings.Contains(kvFile.Values[0], "thequickbrownfox") {
 			t.Errorf("Unexpected file named <%s>", kvFile.Values[0])
 		}
 	}
@@ -51,17 +55,21 @@ func TestGetWords(t *testing.T) {
 
 func TestMap(t *testing.T) {
 	resultChl := make(chan MRInput)
+	doneChl := make(chan bool, 1)
 	input := MRInput{Key: "doesn't matter,unused", Values: []string{"../testdata/cats.txt"}}
-	go Map(input, resultChl)
+	go Map(input, resultChl, doneChl)
 	results := make(map[string][]string)
+
+GETRESULTS:
 	for {
-		result := <-resultChl
-		if result.Key == "" {
-			break
+		select {
+		case result := <-resultChl:
+			values := results[result.Key]
+			values = append(values, result.Values...)
+			results[result.Key] = values
+		case <-doneChl:
+			break GETRESULTS
 		}
-		values := results[result.Key]
-		values = append(values, result.Values...)
-		results[result.Key] = values
 	}
 	actual := fmt.Sprint(results)
 
@@ -74,31 +82,37 @@ func TestMap(t *testing.T) {
 
 func TestReduce(t *testing.T) {
 	resultChl := make(chan MRInput)
+	doneChl := make(chan bool, 1)
 	input := MRInput{Key: "doesn't matter,unused", Values: []string{"../testdata/cats.txt"}}
-	go Map(input, resultChl)
+	go Map(input, resultChl, doneChl)
 	results := make(map[string][]string)
+
+GETRESULTS:
 	for {
-		result := <-resultChl
-		if result.Key == "" {
-			break
+		select {
+		case result := <-resultChl:
+			values := results[result.Key]
+			values = append(values, result.Values...)
+			results[result.Key] = values
+		case <-doneChl:
+			break GETRESULTS
 		}
-		values := results[result.Key]
-		values = append(values, result.Values...)
-		results[result.Key] = values
 	}
 
 	reduceInput := mapToKVSlice(results)
-	go RemoveDups(reduceInput[0], resultChl)
+	go RemoveDups(reduceInput[0], resultChl, doneChl)
 
 	reduceResults := make(map[string][]string)
+GETREDUCERESULTS:
 	for {
-		result := <-resultChl
-		if result.Key == "" {
-			break
+		select {
+		case result := <-resultChl:
+			values := reduceResults[result.Key]
+			values = append(values, result.Values...)
+			reduceResults[result.Key] = values
+		case <-doneChl:
+			break GETREDUCERESULTS
 		}
-		values := reduceResults[result.Key]
-		values = append(values, result.Values...)
-		reduceResults[result.Key] = values
 	}
 	actual := fmt.Sprint(reduceResults)
 	fmt.Println(actual)

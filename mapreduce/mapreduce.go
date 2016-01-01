@@ -22,8 +22,8 @@ type MRInput struct {
 // MapReduce is a simple function that runs in the same goroutine as the caller. The rest of the map-reduce
 // process runs in separate goroutines.
 //
-func MapReduce(input []MRInput, mapFunc func(input MRInput, collectChan chan MRInput),
-	reduceFunc func(input MRInput, collectChan chan MRInput)) (result map[string][]string) {
+func MapReduce(input []MRInput, mapFunc func(input MRInput, collectChan chan MRInput, doneChl chan bool),
+	reduceFunc func(input MRInput, collectChan chan MRInput, doneChl chan bool)) (result map[string][]string) {
 	resultChl := make(chan map[string][]string, 1)
 
 	// Kick off map/reduce process
@@ -38,43 +38,46 @@ func MapReduce(input []MRInput, mapFunc func(input MRInput, collectChan chan MRI
 // of the entries in the inputs parameter to do the mapping; (2) Collecting the results of the mapping process from
 // each of the mapper goroutines; (3) starting a goroutine for each of the entries in mapping results to perform
 // the reduce operation; (4) collecting the final results and sending them over the resultChl.
-func master(resultChl chan map[string][]string, mapFunc func(input MRInput, resChan chan MRInput),
-	reduceFunc func(input MRInput, resChan chan MRInput), inputs []MRInput) {
+func master(resultChl chan map[string][]string, mapFunc func(input MRInput, resChan chan MRInput, doneChl chan bool),
+	reduceFunc func(input MRInput, resChan chan MRInput, doneChl chan bool), inputs []MRInput) {
 
 	// Used to collect the results from the mapping and reduce operations.
 	collectChl := make(chan MRInput)
+	// Used by workers to signal when they've completed
+	doneChl := make(chan bool)
 
 	// Spawn a mapper goroutine for each input, with a mapping function and a
 	// channel to collect the intermediate results.
 	for _, input := range inputs {
-		startWorkers(mapFunc, input, collectChl)
+		startWorkers(mapFunc, input, collectChl, doneChl)
 	}
 
 	// Gather all the mapping results
 	numResults := len(inputs)
-	intermediateResultMap := collectResults(collectChl, numResults)
+	intermediateResultMap := collectResults(collectChl, numResults, doneChl)
 
 	// Spawn a reduce goroutine for each mapping result, with a reduce function and a
 	// channel to collect the results. First though, convert the intermediate results into
 	// a slice of MRInputs suitable for input for the reduce function.
 	intermediateResults := mapToKVSlice(intermediateResultMap)
 	for _, intermediateResult := range intermediateResults {
-		startWorkers(reduceFunc, intermediateResult, collectChl)
+		startWorkers(reduceFunc, intermediateResult, collectChl, doneChl)
 	}
 
 	// Collect the results from the reduce operation
 	numResults = len(intermediateResults)
-	finalResults := collectResults(collectChl, numResults)
+	finalResults := collectResults(collectChl, numResults, doneChl)
 
 	resultChl <- finalResults
 
 }
 
-func startWorkers(workerFun func(input MRInput, retChan chan MRInput), input MRInput, collectChl chan MRInput) {
-	go workerFun(input, collectChl)
+func startWorkers(workerFun func(input MRInput, retChan chan MRInput, doneChl chan bool), input MRInput,
+	collectChl chan MRInput, doneChl chan bool) {
+	go workerFun(input, collectChl, doneChl)
 }
 
-func collectResults(collectChl chan MRInput, numProcs int) map[string][]string {
+func collectResults(collectChl chan MRInput, numProcs int, doneChl chan bool) map[string][]string {
 	results := make(map[string][]string)
 
 	// Each map/reduce process will provide a zero-value initialized MRInput in the final result just prior to exiting.
@@ -82,14 +85,15 @@ func collectResults(collectChl chan MRInput, numProcs int) map[string][]string {
 	// mappers/reducers have exited.
 
 	for i := 0; numProcs > 0; i++ {
-		result := <-collectChl
-		if result.Key == "" {
+		select  {
+		case result := <-collectChl:
+			values := results[result.Key]
+			values = append(values, result.Values...)
+			results[result.Key] = values
+		case <-doneChl:
 			numProcs--
 			continue
 		}
-		values := results[result.Key]
-		values = append(values, result.Values...)
-		results[result.Key] = values
 	}
 	return results
 }

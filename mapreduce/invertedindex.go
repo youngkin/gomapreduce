@@ -15,7 +15,7 @@ import (
 
 // Map transforms a file of words into a word with its containing file. I.e., if file name is thought of as the original
 // index to a word, this function reverses this so that the word is now the index to the file(s) containing it.
-func Map(input MRInput, resultChl chan MRInput) {
+func Map(input MRInput, resultChl chan MRInput, doneChl chan bool) {
 	fileName := input.Values[0]
 	words, err := GetWords(fileName)
 	if err != nil {
@@ -25,12 +25,12 @@ func Map(input MRInput, resultChl chan MRInput) {
 	for _, word := range words {
 		resultChl <- MRInput{Key: word, Values: []string{fileName}}
 	}
-	resultChl <- MRInput{}
+	doneChl <- true
 }
 
 // RemoveDups removes any duplicates from MRInput.Values. Specifically, if a given word appears more than once in a
 // file, then that file's name will appear multiple times in MRInput.Values after processing by the Map() function.
-func RemoveDups(input MRInput, resultChl chan MRInput) {
+func RemoveDups(input MRInput, resultChl chan MRInput, doneChl chan bool) {
 	set := make(map[string]bool)
 	for _, fileName := range input.Values {
 		set[fileName] = true
@@ -40,7 +40,7 @@ func RemoveDups(input MRInput, resultChl chan MRInput) {
 		uniqueFiles = append(uniqueFiles, k)
 	}
 	resultChl <- MRInput{Key: input.Key, Values: uniqueFiles}
-	resultChl <- MRInput{}
+	doneChl <- true
 }
 
 

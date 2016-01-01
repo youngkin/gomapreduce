@@ -1,7 +1,9 @@
 package main
+
 import (
-	"gomapreduce/mapreduce"
 	"fmt"
+
+	"github.com/youngkin/gomapreduce/mapreduce"
 )
 
 func main() {

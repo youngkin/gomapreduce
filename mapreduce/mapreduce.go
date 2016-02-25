@@ -38,8 +38,8 @@ func MapReduce(input []MRInput, mapFunc func(input MRInput, collectChan chan MRI
 // of the entries in the inputs parameter to do the mapping; (2) Collecting the results of the mapping process from
 // each of the mapper goroutines; (3) starting a goroutine for each of the entries in the mapping results to perform
 // the reduce operation; (4) collecting the final results and sending them over the resultChl.
-func master(resultChl chan map[string][]string, mapFunc func(input MRInput, resChan chan MRInput, doneChl chan bool),
-	reduceFunc func(input MRInput, resChan chan MRInput, doneChl chan bool), inputs []MRInput) {
+func master(resultChl chan map[string][]string, mapFunc func(input MRInput, collectChl chan MRInput, doneChl chan bool),
+	reduceFunc func(input MRInput, collectChl chan MRInput, doneChl chan bool), inputs []MRInput) {
 
 	// Used to collect the results from the mapping and reduce operations.
 	collectChl := make(chan MRInput)

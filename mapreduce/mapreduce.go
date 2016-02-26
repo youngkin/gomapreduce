@@ -1,5 +1,6 @@
 /*
-gomapreduce implements a simple map-reduce alogorithm where the map and reduce operations can be specified
+gomapreduce implements a simple map-reduce algorithm
+where the map and reduce operations can be specified
 by the map-reduce client.
 */
 
@@ -22,8 +23,8 @@ type MRInput struct {
 // MapReduce is a simple function that runs in the same goroutine as the caller. The rest of the map-reduce
 // process runs in separate goroutines.
 //
-func MapReduce(input []MRInput, mapFunc func(input MRInput, collectChan chan MRInput, doneChl chan bool),
-	reduceFunc func(input MRInput, collectChan chan MRInput, doneChl chan bool)) (result map[string][]string) {
+func MapReduce(input []MRInput, mapFunc func(input MRInput, collectChan chan MRInput, doneChl chan struct{}),
+	reduceFunc func(input MRInput, collectChan chan MRInput, doneChl chan struct{})) (result map[string][]string) {
 	resultChl := make(chan map[string][]string, 1)
 
 	// Kick off map/reduce process
@@ -38,13 +39,13 @@ func MapReduce(input []MRInput, mapFunc func(input MRInput, collectChan chan MRI
 // of the entries in the inputs parameter to do the mapping; (2) Collecting the results of the mapping process from
 // each of the mapper goroutines; (3) starting a goroutine for each of the entries in the mapping results to perform
 // the reduce operation; (4) collecting the final results and sending them over the resultChl.
-func master(resultChl chan map[string][]string, mapFunc func(input MRInput, collectChl chan MRInput, doneChl chan bool),
-	reduceFunc func(input MRInput, collectChl chan MRInput, doneChl chan bool), inputs []MRInput) {
+func master(resultChl chan map[string][]string, mapFunc func(input MRInput, collectChl chan MRInput, doneChl chan struct{}),
+	reduceFunc func(input MRInput, collectChl chan MRInput, doneChl chan struct{}), inputs []MRInput) {
 
 	// Used to collect the results from the mapping and reduce operations.
 	collectChl := make(chan MRInput)
 	// Used by workers to signal when they've completed
-	doneChl := make(chan bool)
+	doneChl := make(chan struct{})
 
 	// Spawn a mapper goroutine for each input, with a mapping function and a
 	// channel to collect the intermediate results.
@@ -67,18 +68,16 @@ func master(resultChl chan map[string][]string, mapFunc func(input MRInput, coll
 	finalResults := collectResults(collectChl, numResults, doneChl)
 
 	resultChl <- finalResults
-
 }
 
-
-func collectResults(collectChl chan MRInput, numProcs int, doneChl chan bool) map[string][]string {
+func collectResults(collectChl chan MRInput, numProcs int, doneChl chan struct{}) map[string][]string {
 	results := make(map[string][]string)
 
 	// Each map/reduce process will send a message on doneChl just prior to exiting. This function reduces
 	// numProcs by 1 when signaled on the doneChl until numProcs is 0. I.e., it runs until all mappers/reducers
 	// have exited.
 	for i := 0; numProcs > 0; i++ {
-		select  {
+		select {
 		case result := <-collectChl:
 			values := results[result.Key]
 			values = append(values, result.Values...)
@@ -93,7 +92,7 @@ func collectResults(collectChl chan MRInput, numProcs int, doneChl chan bool) ma
 
 //mapToKVSlice transforms a map[string][]string to a slice of MRInputs.
 func mapToKVSlice(kvMap map[string][]string) []MRInput {
-	kvs := make([]MRInput, 0)
+	var kvs []MRInput
 	for key, value := range kvMap {
 		kv := MRInput{key, value}
 		kvs = append(kvs, kv)

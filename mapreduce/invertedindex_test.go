@@ -16,6 +16,7 @@ func TestGetFiles(t *testing.T) {
 			!strings.Contains(fileName, "dog") &&
 			!strings.Contains(fileName, "car") &&
 			!strings.Contains(fileName, "nowisthetime") &&
+			!strings.Contains(fileName, "butterfly") &&
 			!strings.Contains(fileName, "thequickbrownfox") {
 			t.Errorf("Unexpected file named <%s>", fileName)
 		}
@@ -32,6 +33,7 @@ func TestGetKVFiles(t *testing.T) {
 			!strings.Contains(kvFile.Values[0], "dog") &&
 			!strings.Contains(kvFile.Values[0], "car") &&
 			!strings.Contains(kvFile.Values[0], "nowisthetime") &&
+			!strings.Contains(kvFile.Values[0], "butterfly") &&
 			!strings.Contains(kvFile.Values[0], "thequickbrownfox") {
 			t.Errorf("Unexpected file named <%s>", kvFile.Values[0])
 		}
@@ -55,7 +57,7 @@ func TestGetWords(t *testing.T) {
 
 func TestMap(t *testing.T) {
 	resultChl := make(chan MRInput)
-	doneChl := make(chan bool, 1)
+	doneChl := make(chan struct{}, 1)
 	input := MRInput{Key: "doesn't matter,unused", Values: []string{"../testdata/cats.txt"}}
 	go Map(input, resultChl, doneChl)
 	results := make(map[string][]string)
@@ -73,7 +75,7 @@ GETRESULTS:
 	}
 	actual := fmt.Sprint(results)
 
-	fmt.Println(actual)
+	t.Log(actual)
 	//	expected := "map[Jaguar:[./testdata/cats.txt ./testdata/cats.txt] Kitty:[./testdata/cats.txt] Lion:[./testdata/cats.txt] Cheetah:[./testdata/cats.txt]]"
 	//	if !strings.EqualFold(expected,	actual) {
 	//		t.Errorf("Expected <%s>;\n Got <%s>", expected, actual)
@@ -82,7 +84,7 @@ GETRESULTS:
 
 func TestReduce(t *testing.T) {
 	resultChl := make(chan MRInput)
-	doneChl := make(chan bool, 1)
+	doneChl := make(chan struct{}, 1)
 	input := MRInput{Key: "doesn't matter,unused", Values: []string{"../testdata/cats.txt"}}
 	go Map(input, resultChl, doneChl)
 	results := make(map[string][]string)
@@ -115,5 +117,5 @@ GETREDUCERESULTS:
 		}
 	}
 	actual := fmt.Sprint(reduceResults)
-	fmt.Println(actual)
+	t.Log(actual)
 }

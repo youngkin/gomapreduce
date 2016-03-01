@@ -15,7 +15,7 @@ import (
 
 // Map transforms a file of words into a word with its containing file. I.e., if file name is thought of as the original
 // index to a word, this function reverses this so that the word is now the index to the file(s) containing it.
-func Map(input MRInput, resultChl chan MRInput, doneChl chan bool) {
+func Map(input MRInput, resultChl chan MRInput, doneChl chan struct{}) {
 	fileName := input.Values[0]
 	words, err := GetWords(fileName)
 	if err != nil {
@@ -25,62 +25,68 @@ func Map(input MRInput, resultChl chan MRInput, doneChl chan bool) {
 	for _, word := range words {
 		resultChl <- MRInput{Key: word, Values: []string{fileName}}
 	}
-	doneChl <- true
+	doneChl <- struct{}{}
 }
 
 // RemoveDups removes any duplicates from MRInput.Values. Specifically, if a given word appears more than once in a
 // file, then that file's name will appear multiple times in MRInput.Values after processing by the Map() function.
-func RemoveDups(input MRInput, resultChl chan MRInput, doneChl chan bool) {
-	set := make(map[string]bool)
+func RemoveDups(input MRInput, resultChl chan MRInput, doneChl chan struct{}) {
+	set := make(map[string]struct{})
 	for _, fileName := range input.Values {
-		set[fileName] = true
+		set[fileName] = struct{}{}
 	}
-	uniqueFiles := make([]string, 0)
-	for k, _ := range set {
+
+	var uniqueFiles []string
+	for k := range set {
 		uniqueFiles = append(uniqueFiles, k)
 	}
-	resultChl <- MRInput{Key: input.Key, Values: uniqueFiles}
-	doneChl <- true
-}
 
+	resultChl <- MRInput{Key: input.Key, Values: uniqueFiles}
+	doneChl <- struct{}{}
+}
 
 // GetKVFiles returns all the files in the provided directory as a slice of MRInputs. The output provides the
 // original input to the Map/Reduce process.
 func GetKVFiles(dirName string) ([]MRInput, error) {
 	files, err := GetFiles(dirName)
-	if err != nil  {
+	if err != nil {
 		return nil, fmt.Errorf("Unexpected error returned: <%v>", err)
 	}
 
-	kvFiles := make([]MRInput, 0)
+	var kvFiles []MRInput
 	for i, file := range files {
 		kvFiles = append(kvFiles, MRInput{Key: strconv.Itoa(i), Values: []string{file}})
 	}
+
 	return kvFiles, nil
 }
+
+// GetFiles returns an array of files for a given dir
 func GetFiles(dirName string) (files []string, err error) {
 	fileInfos, err := ioutil.ReadDir(dirName)
 	if err != nil {
 		fmt.Println("Error reading directory:", dirName, ":", err)
 		return nil, err
 	}
-	files = make([]string, 0)
+
 	for _, fileInfo := range fileInfos {
 		file := fileInfo.Name()
 		files = append(files, filepath.Join(dirName, file))
 	}
+
 	return files, err
 }
 
+// GetWords returns a set of words in a given file
 func GetWords(fileName string) ([]string, error) {
 	f, err := os.Open(fileName)
-
 	if err != nil {
 		fmt.Println("Couldn't open file:", fileName, "Error:", err)
 		return nil, fmt.Errorf("Couldn't open file %s. Error %v", fileName, err)
 	}
+
 	scanner := bufio.NewScanner(f)
-	words := make([]string, 0)
+	var words []string
 	scanner.Split(bufio.ScanWords)
 	for scanner.Scan() {
 		words = append(words, scanner.Text())
@@ -88,5 +94,6 @@ func GetWords(fileName string) ([]string, error) {
 	if scanner.Err() != nil {
 		return nil, fmt.Errorf("Scanning error: %v", scanner.Err())
 	}
+
 	return words, nil
 }

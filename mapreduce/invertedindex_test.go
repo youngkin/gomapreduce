@@ -6,6 +6,15 @@ import (
 	"testing"
 )
 
+func TestAll(t *testing.T) {
+	files, err := GetKVFiles("../testdata")
+	if err != nil {
+		panic(fmt.Sprintf("Error GetKVFiles() [%v]", err))
+	}
+
+	MapReduce(files, Map, RemoveDups)
+}
+
 func TestGetFiles(t *testing.T) {
 	files, err := GetFiles("../testdata")
 	if err != nil {
@@ -76,10 +85,10 @@ GETRESULTS:
 	actual := fmt.Sprint(results)
 
 	t.Log(actual)
-	//	expected := "map[Jaguar:[./testdata/cats.txt ./testdata/cats.txt] Kitty:[./testdata/cats.txt] Lion:[./testdata/cats.txt] Cheetah:[./testdata/cats.txt]]"
-	//	if !strings.EqualFold(expected,	actual) {
-	//		t.Errorf("Expected <%s>;\n Got <%s>", expected, actual)
-	//	}
+	//expected := "map[Jaguar:[./testdata/cats.txt ./testdata/cats.txt] Kitty:[./testdata/cats.txt] Lion:[./testdata/cats.txt] Cheetah:[./testdata/cats.txt]]"
+	//if !strings.EqualFold(expected, actual) {
+	//t.Errorf("Expected <%s>;\n Got <%s>", expected, actual)
+	//}
 }
 
 func TestReduce(t *testing.T) {
@@ -118,4 +127,42 @@ GETREDUCERESULTS:
 	}
 	actual := fmt.Sprint(reduceResults)
 	t.Log(actual)
+}
+
+func BenchmarkReduce(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		resultChl := make(chan MRInput)
+		doneChl := make(chan struct{}, 1)
+		input := MRInput{Key: "doesn't matter,unused", Values: []string{"../testdata/cats.txt"}}
+		go Map(input, resultChl, doneChl)
+		results := make(map[string][]string)
+
+	GETRESULTS:
+		for {
+			select {
+			case result := <-resultChl:
+				values := results[result.Key]
+				values = append(values, result.Values...)
+				results[result.Key] = values
+			case <-doneChl:
+				break GETRESULTS
+			}
+		}
+
+		reduceInput := mapToKVSlice(results)
+		go RemoveDups(reduceInput[0], resultChl, doneChl)
+
+		reduceResults := make(map[string][]string)
+	GETREDUCERESULTS:
+		for {
+			select {
+			case result := <-resultChl:
+				values := reduceResults[result.Key]
+				values = append(values, result.Values...)
+				reduceResults[result.Key] = values
+			case <-doneChl:
+				break GETREDUCERESULTS
+			}
+		}
+	}
 }
